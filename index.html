@@ -4,12 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GT Admin - Usuarios y Pueblos</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
+        // --- 1. CONFIGURACIÓN DE FIREBASE (Sustituye por tus datos) ---
         const firebaseConfig = {
   apiKey: "AIzaSyCRdip4voDHkV_b5r_Wl722fX8j7zUxTKg",
   authDomain: "aura-oscura.firebaseapp.com",
@@ -23,126 +27,191 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
         const provider = new GoogleAuthProvider();
-        const ADMIN_EMAIL = "tu-correo@gmail.com"; // CAMBIA ESTO
+        
+        // --- 2. CONFIGURACIÓN DEL ADMINISTRADOR ---
+        const ADMIN_EMAIL = "tu-correo@gmail.com"; // CAMBIA ESTO POR TU CORREO
 
-        // --- GESTIÓN DE DATOS ---
-
-        // Guardar
+        // --- 3. GESTIÓN DE DATOS (Guardar y Eliminar) ---
         window.saveData = async () => {
             const user = auth.currentUser;
-            if (!user || user.email !== ADMIN_EMAIL) return alert("No autorizado");
+            if (!user || user.email !== ADMIN_EMAIL) return alert("Acceso denegado: No autorizado");
             
             const nombre = document.getElementById('name').value;
             const coords = document.getElementById('coords').value;
             
-            if(!nombre || !coords) return alert("Rellena los campos");
+            if(!nombre || !coords) return alert("Rellena los campos de nombre y coordenadas");
 
             await addDoc(collection(db, "jugadores"), { nombre, coords });
             document.getElementById('name').value = "";
             document.getElementById('coords').value = "";
         };
 
-        // Eliminar
         window.deletePlayer = async (id) => {
             const user = auth.currentUser;
             if (user && user.email === ADMIN_EMAIL) {
-                if(confirm("¿Seguro que quieres eliminar este registro?")) {
+                if(confirm("¿Seguro que quieres eliminar este pueblo?")) {
                     await deleteDoc(doc(db, "jugadores", id));
                 }
+            } else {
+                alert("Acceso denegado: Solo el administrador puede borrar.");
             }
         };
 
-        // Escuchar cambios en tiempo real para la lista
+        // Escuchar cambios en tiempo real para la lista de la izquierda
         onSnapshot(collection(db, "jugadores"), (snapshot) => {
             const lista = document.getElementById('listaJugadores');
             lista.innerHTML = "";
             snapshot.forEach((doc) => {
                 const data = doc.data();
                 lista.innerHTML += `
-                    <div class="flex justify-between items-center bg-slate-700 p-3 rounded mb-2">
+                    <div class="flex justify-between items-center bg-slate-700 p-3 rounded mb-2 shadow-sm border border-slate-600">
                         <div>
                             <span class="font-bold text-yellow-500">${data.nombre}</span> 
                             <span class="text-sm text-slate-300 ml-2">(${data.coords})</span>
                         </div>
-                        <button onclick="deletePlayer('${doc.id}')" class="text-red-400 hover:text-red-600 font-bold px-2">✕</button>
+                        <button onclick="deletePlayer('${doc.id}')" class="text-red-400 hover:text-red-600 font-bold px-2 transition">✕</button>
                     </div>
                 `;
             });
         });
 
-        // --- CALCULADORA ---
-        window.calcularAtaque = () => {
-            const c1 = document.getElementById('origen').value.split('|');
-            const c2 = document.getElementById('destino').value.split('|');
+        // --- 4. CALCULADORA Y PUEBLOS CERCANOS ---
+        window.calcularAtaque = async () => {
+            const origenRaw = document.getElementById('origen').value;
+            const destinoRaw = document.getElementById('destino').value;
             const fechaLlegada = new Date(document.getElementById('horaLlegada').value);
             const ahora = new Date();
 
-            if(c1.length < 2 || c2.length < 2 || isNaN(fechaLlegada)) return alert("Datos incompletos");
+            if(!origenRaw.includes('|') || !destinoRaw.includes('|') || isNaN(fechaLlegada)) {
+                return alert("Introduce coordenadas válidas (xxx|yyy) y una fecha correcta");
+            }
 
-            const dist = Math.sqrt(Math.pow(c2[0]-c1[0], 2) + Math.pow(c2[1]-c1[1], 2));
+            const c1 = origenRaw.split('|');
+            const c2 = destinoRaw.split('|');
+            const distTarget = Math.sqrt(Math.pow(c2[0]-c1[0], 2) + Math.pow(c2[1]-c1[1], 2));
             const minFaltantes = (fechaLlegada - ahora) / 60000;
 
+            // Identificación de Tropas
             const unidades = [
                 { n: "Espías", v: 9 }, { n: "Ligera", v: 10 }, { n: "Hachas/Lanzas", v: 18 },
                 { n: "Espadas", v: 22 }, { n: "Arietes/Catas", v: 30 }, { n: "Noble", v: 35 }
             ];
 
-            let res = `<p class="mb-2 text-blue-300">Distancia: ${dist.toFixed(2)} casillas</p>`;
+            let resIdentificacion = `<p class="mb-2 text-blue-300 font-bold">Distancia al objetivo: ${distTarget.toFixed(2)} casillas</p>`;
             unidades.forEach(u => {
-                const tReq = dist * u.v;
+                const tReq = distTarget * u.v;
                 const ok = minFaltantes >= tReq;
-                res += `<div class="flex justify-between border-b border-slate-700 py-1 ${ok ? 'text-green-400' : 'text-red-400 opacity-50'}">
+                resIdentificacion += `<div class="flex justify-between border-b border-slate-700 py-1 ${ok ? 'text-green-400' : 'text-red-400 opacity-50'}">
                     <span>${u.n}</span>
                     <span>${ok ? 'POSIBLE' : 'DESCARTADO'} (${Math.round(tReq)} min)</span>
                 </div>`;
             });
-            document.getElementById('resCalc').innerHTML = res;
+            document.getElementById('resCalc').innerHTML = resIdentificacion;
+
+            // Lógica de Pueblos Cercanos (Cercanía al pueblo que recibe el ataque)
+            const snapshot = await getDocs(collection(db, "jugadores"));
+            let pueblosCercanos = [];
+
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                const pCoord = data.coords.split('|');
+                // Calculamos distancia desde el pueblo de la BBDD hasta el DESTINO del ataque
+                const d = Math.sqrt(Math.pow(c2[0]-pCoord[0], 2) + Math.pow(c2[1]-pCoord[1], 2));
+                pueblosCercanos.push({ ...data, distancia: d });
+            });
+
+            // Ordenar por distancia (menor a mayor)
+            pueblosCercanos.sort((a, b) => a.distancia - b.distancia);
+
+            let resCercania = `<h3 class="text-yellow-500 font-bold mb-3 border-b border-yellow-900/50 pb-1">Pueblos de apoyo más cercanos:</h3>`;
+            if (pueblosCercanos.length === 0) {
+                resCercania += `<p class="text-sm">No hay pueblos guardados en la base de datos.</p>`;
+            } else {
+                pueblosCercanos.slice(0, 5).forEach(p => {
+                    resCercania += `
+                        <div class="flex justify-between text-sm mb-2 bg-slate-800 p-2 rounded border border-slate-700">
+                            <span class="font-semibold">${p.nombre} <span class="font-normal text-slate-400">(${p.coords})</span></span>
+                            <span class="text-yellow-400 font-mono">${p.distancia.toFixed(1)} c.</span>
+                        </div>`;
+                });
+            }
+            document.getElementById('listaCercania').innerHTML = resCercania;
         };
 
+        // --- 5. LOGIN ---
         window.login = () => signInWithPopup(auth, provider);
+        
+        // Comprobar estado de login al cargar
+        onAuthStateChanged(auth, (user) => {
+            const btn = document.getElementById('loginBtn');
+            if (user) {
+                btn.innerText = `Logueado como: ${user.email}`;
+                btn.classList.replace('bg-slate-800', 'bg-green-700');
+            } else {
+                btn.innerText = "Login Admin (Google)";
+                btn.classList.replace('bg-green-700', 'bg-slate-800');
+            }
+        });
     </script>
 </head>
 <body class="bg-slate-900 text-slate-100 p-4 min-h-screen font-sans">
 
-    <div class="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
+    <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
         
-        <!-- COLUMNA IZQUIERDA: GESTIÓN -->
+        <!-- COLUMNA IZQUIERDA: GESTIÓN DE BBDD -->
         <div>
-            <header class="mb-6">
-                <h1 class="text-3xl font-black text-yellow-500 italic">GT ADMIN</h1>
-                <button onclick="login()" class="text-xs bg-slate-800 px-2 py-1 rounded mt-2 border border-slate-600">Login Google</button>
+            <header class="mb-6 flex justify-between items-center">
+                <h1 class="text-3xl font-black text-yellow-500 italic tracking-wider">GT ADMIN</h1>
+                <button id="loginBtn" onclick="login()" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded border border-slate-600 transition shadow-lg">Login Admin (Google)</button>
             </header>
 
-            <section class="bg-slate-800 p-5 rounded-xl shadow-2xl border border-slate-700">
-                <h2 class="text-lg font-bold mb-4">Añadir Objetivo</h2>
+            <section class="bg-slate-800 p-6 rounded-xl shadow-2xl border border-slate-700">
+                <h2 class="text-lg font-bold mb-4 flex items-center"><span class="bg-yellow-500 w-2 h-6 mr-2 rounded"></span> Añadir Objetivo / Pueblo</h2>
                 <div class="space-y-3">
-                    <input type="text" id="name" placeholder="Nombre Jugador" class="w-full bg-slate-900 p-2 rounded border border-slate-600">
-                    <input type="text" id="coords" placeholder="Coordenadas (500|500)" class="w-full bg-slate-900 p-2 rounded border border-slate-600">
-                    <button onclick="saveData()" class="w-full bg-yellow-600 hover:bg-yellow-500 py-2 rounded font-black transition">GUARDAR JUGADOR</button>
+                    <input type="text" id="name" placeholder="Nombre (Ej: Jugador Principal / Pueblo Def)" class="w-full bg-slate-900 p-3 rounded border border-slate-600 focus:border-yellow-500 outline-none">
+                    <input type="text" id="coords" placeholder="Coordenadas (500|500)" class="w-full bg-slate-900 p-3 rounded border border-slate-600 focus:border-yellow-500 outline-none">
+                    <button onclick="saveData()" class="w-full bg-yellow-600 hover:bg-yellow-500 py-3 rounded font-black transition shadow-lg mt-2 text-slate-900">GUARDAR EN BBDD</button>
                 </div>
 
-                <h2 class="text-lg font-bold mt-8 mb-4 border-t border-slate-700 pt-4">Lista de Pueblos</h2>
-                <div id="listaJugadores" class="max-h-60 overflow-y-auto pr-2">
-                    <!-- Los datos aparecen aquí -->
+                <h2 class="text-lg font-bold mt-10 mb-4 border-t border-slate-700 pt-6 flex items-center"><span class="bg-blue-500 w-2 h-6 mr-2 rounded"></span> Lista de Pueblos Guardados</h2>
+                <div id="listaJugadores" class="max-h-80 overflow-y-auto pr-2 custom-scrollbar">
+                    <!-- Los datos se inyectan aquí en tiempo real -->
+                    <p class="text-slate-400 text-sm italic">Cargando base de datos...</p>
                 </div>
             </section>
         </div>
 
-        <!-- COLUMNA DERECHA: CALCULADORA -->
+        <!-- COLUMNA DERECHA: CALCULADORA Y CERCANÍAS -->
         <div>
-            <section class="bg-slate-800 p-5 rounded-xl shadow-2xl border border-slate-700 mt-0 md:mt-12">
-                <h2 class="text-xl font-bold mb-4 text-blue-400">Calculadora de Ataques</h2>
-                <div class="grid grid-cols-2 gap-2 mb-3">
-                    <input type="text" id="origen" placeholder="Origen" class="bg-slate-900 p-2 rounded border border-slate-600">
-                    <input type="text" id="destino" placeholder="Destino" class="bg-slate-900 p-2 rounded border border-slate-600">
+            <section class="bg-slate-800 p-6 rounded-xl shadow-2xl border border-slate-700 mt-0 md:mt-14">
+                <h2 class="text-xl font-bold mb-5 text-blue-400 flex items-center"><span class="bg-blue-400 w-2 h-6 mr-2 rounded"></span> Calculadora de Ataques</h2>
+                
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <div>
+                        <label class="text-xs text-slate-400 ml-1">Origen (Pueblo que ataca)</label>
+                        <input type="text" id="origen" placeholder="Ej: 450|450" class="w-full bg-slate-900 p-3 rounded border border-slate-600 text-sm focus:border-blue-500 outline-none mt-1">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 ml-1">Destino (Pueblo atacado)</label>
+                        <input type="text" id="destino" placeholder="Ej: 500|500" class="w-full bg-slate-900 p-3 rounded border border-slate-600 text-sm focus:border-blue-500 outline-none mt-1">
+                    </div>
                 </div>
-                <label class="text-xs text-slate-400">Hora estimada de impacto:</label>
-                <input type="datetime-local" id="horaLlegada" class="w-full bg-slate-900 p-2 rounded border border-slate-600 mb-4">
+
+                <div class="mb-6">
+                    <label class="text-xs text-slate-400 ml-1">Hora estimada de impacto</label>
+                    <input type="datetime-local" id="horaLlegada" class="w-full bg-slate-900 p-3 rounded border border-slate-600 text-sm text-white focus:border-blue-500 outline-none mt-1">
+                </div>
                 
-                <button onclick="calcularAtaque()" class="w-full bg-blue-700 hover:bg-blue-600 py-3 rounded font-black mb-4 transition">IDENTIFICAR TROPAS</button>
+                <button onclick="calcularAtaque()" class="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded font-black mb-6 transition shadow-lg tracking-wide text-white">ANALIZAR TROPAS Y CERCANÍAS</button>
                 
-                <div id="resCalc" class="bg-slate-900 p-4 rounded-lg border border-blue-900/30 text-sm">
-                    Resultados del análisis...
+                <!-- Resultados de identificación -->
+                <div id="resCalc" class="bg-slate-900 p-5 rounded-lg border border-slate-700 text-sm mb-4 shadow-inner">
+                    <p class="text-slate-400 italic">Los resultados del análisis de tropas aparecerán aquí...</p>
+                </div>
+
+                <!-- Resultados de Cercanía -->
+                <div id="listaCercania" class="bg-slate-900 p-5 rounded-lg border border-slate-700 text-sm shadow-inner">
+                    <p class="text-slate-400 italic">Los pueblos de apoyo más cercanos aparecerán aquí...</p>
                 </div>
             </section>
         </div>
