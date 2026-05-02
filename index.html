@@ -3,16 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aura Oscura - Dashboard de Guerra</title>
+    <title>Aura Oscura - Gestión de Guerra</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Inter:wght@400;600&display=swap" rel="stylesheet">
     
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #020617; }
+        body { font-family: 'Inter', sans-serif; background-color: #020617; color: #e2e8f0; }
         h1, h2, h3, .title-font { font-family: 'Cinzel', serif; }
-        .glow-purple { box-shadow: 0 0 20px rgba(147, 51, 234, 0.2); }
-        .glow-red { box-shadow: 0 0 20px rgba(220, 38, 38, 0.2); }
-        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .glow-purple { box-shadow: 0 0 20px rgba(147, 51, 234, 0.15); }
+        .glow-red { box-shadow: 0 0 20px rgba(220, 38, 38, 0.15); }
+        .custom-scroll::-webkit-scrollbar { width: 5px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #0f172a; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #4c1d95; border-radius: 10px; }
+        input { color-scheme: dark; }
     </style>
 
     <script type="module">
@@ -34,65 +37,67 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
         const provider = new GoogleAuthProvider();
-        const ADMIN_EMAIL = "manuel943006@gmail.com"; 
+        const ADMIN_EMAIL = "manuel943006@gmail.com"; // TU CORREO AQUÍ
 
-        // --- FUNCIONES DE AUTH ---
-        window.login = async () => {
-            try { await signInWithPopup(auth, provider); } 
-            catch (error) { alert("Error: " + error.message); }
-        };
+        // --- AUTH ---
+        window.login = () => signInWithPopup(auth, provider).catch(e => alert(e.message));
+        window.logout = () => signOut(auth);
 
-        window.logout = async () => {
-            try { await signOut(auth); alert("Sesión cerrada"); } 
-            catch (error) { alert("Error al salir"); }
-        };
-
-        // --- GESTIÓN DE DATOS ---
+        // --- GESTIÓN DE DATOS (GUARDAR) ---
         window.saveData = async () => {
             const user = auth.currentUser;
-            if (!user || user.email !== ADMIN_EMAIL) return alert("No tienes permiso.");
+            if (!user || user.email !== ADMIN_EMAIL) return alert("Acceso denegado: No eres el administrador.");
             
             const nombre = document.getElementById('name').value;
             const x = document.getElementById('regX').value;
             const y = document.getElementById('regY').value;
             
-            if(!nombre || !x || !y) return alert("Completa todos los campos rituales.");
+            if(!nombre || !x || !y) return alert("Faltan datos en el registro.");
 
-            await addDoc(collection(db, "jugadores"), { nombre, coords: `${x}|${y}` });
-            document.getElementById('name').value = "";
-            document.getElementById('regX').value = "";
-            document.getElementById('regY').value = "";
+            try {
+                await addDoc(collection(db, "jugadores"), { nombre, coords: `${x}|${y}` });
+                document.getElementById('name').value = "";
+                document.getElementById('regX').value = "";
+                document.getElementById('regY').value = "";
+            } catch (e) { alert("Error al guardar: " + e.message); }
         };
 
+        // --- GESTIÓN DE DATOS (ELIMINAR) ---
         window.deletePlayer = async (id) => {
-            if (auth.currentUser?.email === ADMIN_EMAIL && confirm("¿Eliminar?")) {
+            if (auth.currentUser?.email === ADMIN_EMAIL && confirm("¿Eliminar este registro del Códice?")) {
                 await deleteDoc(doc(db, "jugadores", id));
             }
         };
 
+        // --- LISTAR PUEBLOS (ESTO ES LO QUE TE FALTABA) ---
         onSnapshot(collection(db, "jugadores"), (snapshot) => {
-            const lista = document.getElementById('listaJugadores');
+            const lista = document.getElementById('listaRegistrados');
+            if (snapshot.empty) {
+                lista.innerHTML = `<p class="text-slate-600 text-center text-xs py-10 uppercase tracking-widest italic">El Códice está vacío...</p>`;
+                return;
+            }
             lista.innerHTML = "";
             snapshot.forEach((doc) => {
                 const data = doc.data();
                 lista.innerHTML += `
-                    <div class="flex justify-between items-center bg-slate-900/50 p-3 rounded-lg mb-2 border border-purple-900/30">
-                        <div><span class="text-purple-400 font-bold">${data.nombre}</span> <span class="text-xs text-slate-500 ml-2 font-mono">${data.coords}</span></div>
-                        <button onclick="deletePlayer('${doc.id}')" class="text-red-500 hover:text-white transition">✕</button>
+                    <div class="flex justify-between items-center bg-slate-950/50 p-3 rounded-lg mb-2 border border-purple-900/20 hover:border-purple-500/40 transition">
+                        <div>
+                            <p class="text-purple-400 font-bold text-sm">${data.nombre}</p>
+                            <p class="text-[10px] text-slate-500 font-mono">COORD: ${data.coords}</p>
+                        </div>
+                        <button onclick="deletePlayer('${doc.id}')" class="text-red-900 hover:text-red-500 transition px-2">✕</button>
                     </div>`;
             });
         });
 
         // --- CALCULADORA ---
         window.calcularAtaque = async () => {
-            const ox = document.getElementById('origX').value;
-            const oy = document.getElementById('origY').value;
-            const dx = document.getElementById('destX').value;
-            const dy = document.getElementById('destY').value;
+            const ox = document.getElementById('origX').value; const oy = document.getElementById('origY').value;
+            const dx = document.getElementById('destX').value; const dy = document.getElementById('destY').value;
             const fechaLlegada = new Date(document.getElementById('horaLlegada').value);
             const ahora = new Date();
 
-            if(!ox || !oy || !dx || !dy || isNaN(fechaLlegada)) return alert("Datos incompletos");
+            if(!ox || !oy || !dx || !dy || isNaN(fechaLlegada)) return alert("Faltan coordenadas o fecha.");
 
             const dist = Math.sqrt(Math.pow(dx-ox, 2) + Math.pow(dy-oy, 2));
             const minFaltantes = (fechaLlegada - ahora) / 60000;
@@ -102,97 +107,127 @@
                 { n: "Espadas", v: 22 }, { n: "Arietes/Catas", v: 30 }, { n: "Noble", v: 35 }
             ];
 
-            let resH = `<p class="text-purple-300 font-bold text-center mb-2">Distancia: ${dist.toFixed(2)}</p>`;
+            // Identificación
+            let resH = `<h3 class="text-red-500 text-xs font-bold mb-3 border-b border-red-900/30 pb-1">Identificación:</h3>`;
             unidades.forEach(u => {
                 const tReq = dist * u.v;
                 const ok = minFaltantes >= tReq;
-                resH += `<div class="flex justify-between text-xs py-1 border-b border-slate-800 ${ok ? 'text-green-400' : 'text-slate-600'}">
-                    <span>${u.n}</span><span>${ok ? 'POSIBLE' : 'No llega'}</span>
+                resH += `<div class="flex justify-between text-[11px] py-1 border-b border-slate-900/50 ${ok ? 'text-green-400 font-bold' : 'text-slate-700'}">
+                    <span>${u.n}</span><span>${ok ? '⚠️ POSIBLE' : 'DESCARTADO'}</span>
                 </div>`;
             });
             document.getElementById('resCalc').innerHTML = resH;
 
-            // Cercanías
+            // Cercanías (Filtrado de los pueblos registrados)
             const snapshot = await getDocs(collection(db, "jugadores"));
             let pueblos = [];
-            snapshot.forEach(doc => {
-                const d = doc.data();
-                const [px, py] = d.coords.split('|');
-                const distApoyo = Math.sqrt(Math.pow(dx-px, 2) + Math.pow(dy-py, 2));
-                pueblos.push({...d, distApoyo});
+            snapshot.forEach(d => {
+                const data = d.data();
+                const [px, py] = data.coords.split('|');
+                const dApoyo = Math.sqrt(Math.pow(dx-px, 2) + Math.pow(dy-py, 2));
+                pueblos.push({...data, dApoyo});
             });
-            pueblos.sort((a,b) => a.distApoyo - b.distApoyo);
+            pueblos.sort((a,b) => a.dApoyo - b.dApoyo);
             
-            let cerH = `<h3 class="text-purple-400 text-xs font-bold mb-2">Cercanías al Destino:</h3>`;
+            let cerH = `<h3 class="text-purple-400 text-xs font-bold mb-3 border-b border-purple-900/30 pb-1">Apoyos Cercanos:</h3>`;
             pueblos.slice(0, 5).forEach(p => {
-                cerH += `<div class="flex justify-between text-[10px] mb-1 bg-slate-800/40 p-1 rounded">
-                    <span>${p.nombre}</span><span class="text-purple-400">${p.distApoyo.toFixed(1)}c</span>
+                cerH += `<div class="flex justify-between text-[11px] mb-2 bg-slate-900/80 p-2 rounded border border-purple-900/20">
+                    <span class="text-slate-300 font-semibold">${p.nombre}</span>
+                    <span class="text-purple-400 font-mono">${p.dApoyo.toFixed(1)} c.</span>
                 </div>`;
             });
             document.getElementById('listaCercania').innerHTML = cerH;
         };
 
+        // --- ESTADO DE SESIÓN ---
         onAuthStateChanged(auth, (user) => {
-            const container = document.getElementById('authControls');
+            const container = document.getElementById('authArea');
             if (user) {
-                container.innerHTML = `<span class="text-[10px] text-slate-400 mr-2">${user.email}</span>
-                                       <button onclick="logout()" class="bg-red-900/50 hover:bg-red-700 text-white px-3 py-1 rounded text-xs transition">Salir</button>`;
+                container.innerHTML = `
+                    <span class="text-[10px] text-slate-500 hidden md:inline mr-2">${user.email}</span>
+                    <button onclick="logout()" class="bg-red-950/40 hover:bg-red-700 border border-red-900 text-white px-3 py-1 rounded text-xs transition">Cerrar Sesión</button>`;
             } else {
-                container.innerHTML = `<button onclick="login()" class="bg-purple-900/50 hover:bg-purple-700 text-white px-4 py-1 rounded text-xs transition">Login Admin</button>`;
+                container.innerHTML = `<button onclick="login()" class="bg-purple-900/60 hover:bg-purple-700 border border-purple-500 text-white px-4 py-1 rounded text-xs transition uppercase font-bold">Login Admin</button>`;
             }
         });
     </script>
 </head>
-<body class="text-slate-200 p-4 min-h-screen">
+<body class="p-4 md:p-8 min-h-screen">
 
-    <div class="max-w-5xl mx-auto">
-        <header class="flex justify-between items-center mb-8 border-b border-purple-900/30 pb-4">
-            <div>
-                <h1 class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-red-500 tracking-tighter">AURA OSCURA</h1>
+    <div class="max-w-6xl mx-auto">
+        <!-- HEADER -->
+        <header class="flex justify-between items-center mb-10 border-b border-purple-900/30 pb-6">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-purple-600 rounded-full blur-lg opacity-20 absolute"></div>
+                <h1 class="text-3xl md:text-4xl font-black tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-red-600 relative">AURA OSCURA</h1>
             </div>
-            <div id="authControls"></div>
+            <div id="authArea"></div>
         </header>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <!-- PANEL REGISTRO -->
-            <section class="bg-slate-900/80 p-6 rounded-2xl border border-purple-900/40 glow-purple">
-                <h2 class="text-purple-400 text-sm font-bold mb-4 uppercase tracking-widest">Registrar Pueblo</h2>
-                <div class="space-y-4">
-                    <input type="text" id="name" placeholder="Nombre del Jugador" class="w-full bg-slate-950 p-3 rounded border border-slate-800 outline-none focus:border-purple-600">
-                    <div class="flex gap-2">
-                        <input type="number" id="regX" placeholder="Coord X" class="w-1/2 bg-slate-950 p-3 rounded border border-slate-800 outline-none focus:border-purple-600 text-center">
-                        <input type="number" id="regY" placeholder="Coord Y" class="w-1/2 bg-slate-950 p-3 rounded border border-slate-800 outline-none focus:border-purple-600 text-center">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
+            
+            <!-- PANEL IZQUIERDO: REGISTRO Y LISTA -->
+            <div class="space-y-6">
+                <section class="bg-slate-900/60 p-6 rounded-2xl border border-purple-900/30 glow-purple backdrop-blur-md">
+                    <h2 class="text-purple-400 text-xs font-bold mb-6 uppercase tracking-[0.3em] flex items-center">
+                        <span class="w-8 h-px bg-purple-900 mr-2"></span> Registrar Dominio
+                    </h2>
+                    <div class="space-y-4">
+                        <input type="text" id="name" placeholder="Nombre del Usuario / Pueblo" class="w-full bg-slate-950 p-3 rounded-lg border border-slate-800 outline-none focus:border-purple-600 transition text-sm">
+                        <div class="flex gap-3">
+                            <input type="number" id="regX" placeholder="Coord X" class="w-1/2 bg-slate-950 p-3 rounded-lg border border-slate-800 outline-none focus:border-purple-600 text-center text-sm">
+                            <input type="number" id="regY" placeholder="Coord Y" class="w-1/2 bg-slate-950 p-3 rounded-lg border border-slate-800 outline-none focus:border-purple-600 text-center text-sm">
+                        </div>
+                        <button onclick="saveData()" class="w-full bg-purple-700 hover:bg-purple-600 py-3 rounded-lg font-black transition uppercase text-xs tracking-widest shadow-lg">Guardar en Códice</button>
                     </div>
-                    <button onclick="saveData()" class="w-full bg-purple-700 hover:bg-purple-600 py-3 rounded-lg font-bold transition uppercase text-sm">Guardar</button>
-                </div>
-                <div id="listaJugadores" class="mt-6 max-h-60 overflow-y-auto pr-2 text-sm"></div>
-            </section>
+                </section>
 
-            <!-- CALCULADORA -->
-            <section class="bg-slate-900/80 p-6 rounded-2xl border border-red-900/30 glow-red">
-                <h2 class="text-red-500 text-sm font-bold mb-4 uppercase tracking-widest">Oráculo de Ataque</h2>
-                <div class="grid grid-cols-2 gap-4 mb-4">
-                    <div class="space-y-1">
-                        <label class="text-[10px] text-slate-500 uppercase">Origen (Enemigo)</label>
-                        <div class="flex gap-1">
-                            <input type="number" id="origX" placeholder="X" class="w-full bg-slate-950 p-2 rounded border border-slate-800 text-center">
-                            <input type="number" id="origY" placeholder="Y" class="w-full bg-slate-950 p-2 rounded border border-slate-800 text-center">
+                <!-- ESTO ES LO NUEVO: LISTA DE PUEBLOS SIEMPRE VISIBLE -->
+                <section class="bg-slate-900/40 p-6 rounded-2xl border border-slate-800/50">
+                    <h2 class="text-slate-400 text-[10px] font-bold mb-4 uppercase tracking-[0.3em]">Códice de Miembros</h2>
+                    <div id="listaRegistrados" class="max-h-[300px] overflow-y-auto pr-2 custom-scroll">
+                        <!-- Aquí se verán los pueblos registrados siempre -->
+                        <p class="text-slate-600 text-center text-xs py-10">Cargando...</p>
+                    </div>
+                </section>
+            </div>
+
+            <!-- PANEL DERECHO: CALCULADORA -->
+            <section class="bg-slate-900/60 p-6 rounded-2xl border border-red-900/20 glow-red backdrop-blur-md self-start">
+                <h2 class="text-red-500 text-xs font-bold mb-6 uppercase tracking-[0.3em] flex items-center">
+                    <span class="w-8 h-px bg-red-900 mr-2"></span> Oráculo de Guerra
+                </h2>
+                <div class="grid grid-cols-2 gap-6 mb-6">
+                    <div class="space-y-2">
+                        <label class="text-[9px] text-slate-500 uppercase tracking-tighter">Origen (Enemigo)</label>
+                        <div class="flex gap-2">
+                            <input type="number" id="origX" placeholder="X" class="w-full bg-slate-950 p-2 rounded-lg border border-slate-800 text-center text-sm focus:border-red-900 outline-none">
+                            <input type="number" id="origY" placeholder="Y" class="w-full bg-slate-950 p-2 rounded-lg border border-slate-800 text-center text-sm focus:border-red-900 outline-none">
                         </div>
                     </div>
-                    <div class="space-y-1">
-                        <label class="text-[10px] text-slate-500 uppercase">Destino (Tribu)</label>
-                        <div class="flex gap-1">
-                            <input type="number" id="destX" placeholder="X" class="w-full bg-slate-950 p-2 rounded border border-slate-800 text-center">
-                            <input type="number" id="destY" placeholder="Y" class="w-full bg-slate-950 p-2 rounded border border-slate-800 text-center">
+                    <div class="space-y-2">
+                        <label class="text-[9px] text-slate-500 uppercase tracking-tighter">Destino (Tribu)</label>
+                        <div class="flex gap-2">
+                            <input type="number" id="destX" placeholder="X" class="w-full bg-slate-950 p-2 rounded-lg border border-slate-800 text-center text-sm focus:border-red-900 outline-none">
+                            <input type="number" id="destY" placeholder="Y" class="w-full bg-slate-950 p-2 rounded-lg border border-slate-800 text-center text-sm focus:border-red-900 outline-none">
                         </div>
                     </div>
                 </div>
-                <input type="datetime-local" id="horaLlegada" class="w-full bg-slate-950 p-3 rounded border border-slate-800 mb-4 text-sm" style="color-scheme:dark">
-                <button onclick="calcularAtaque()" class="w-full bg-red-700 hover:bg-red-600 py-3 rounded-lg font-bold transition uppercase text-sm mb-6">Analizar</button>
                 
-                <div class="grid grid-cols-2 gap-4">
-                    <div id="resCalc" class="bg-black/40 p-3 rounded-lg border border-slate-800 min-h-[100px]"></div>
-                    <div id="listaCercania" class="bg-black/40 p-3 rounded-lg border border-slate-800 min-h-[100px]"></div>
+                <div class="mb-6">
+                    <label class="text-[9px] text-slate-500 uppercase tracking-tighter">Hora de Impacto</label>
+                    <input type="datetime-local" id="horaLlegada" class="w-full bg-slate-950 p-3 rounded-lg border border-slate-800 text-sm mt-1 outline-none focus:border-red-900">
+                </div>
+                
+                <button onclick="calcularAtaque()" class="w-full bg-red-800 hover:bg-red-600 py-4 rounded-lg font-black transition uppercase text-xs tracking-widest shadow-lg mb-8">Analizar Amenaza</button>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div id="resCalc" class="bg-black/30 p-4 rounded-xl border border-slate-900 min-h-[150px]">
+                        <p class="text-slate-700 text-[10px] text-center mt-10 italic uppercase">Identificación de Tropas</p>
+                    </div>
+                    <div id="listaCercania" class="bg-black/30 p-4 rounded-xl border border-slate-900 min-h-[150px]">
+                        <p class="text-slate-700 text-[10px] text-center mt-10 italic uppercase">Pueblos de Apoyo</p>
+                    </div>
                 </div>
             </section>
         </div>
