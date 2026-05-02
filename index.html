@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GT Admin - Usuarios y Pueblos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        const firebaseConfig = {
+  apiKey: "AIzaSyCRdip4voDHkV_b5r_Wl722fX8j7zUxTKg",
+  authDomain: "aura-oscura.firebaseapp.com",
+  projectId: "aura-oscura",
+  storageBucket: "aura-oscura.firebasestorage.app",
+  messagingSenderId: "628625847037",
+  appId: "1:628625847037:web:eaaeea7059a7b4695ec494"
+};
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const provider = new GoogleAuthProvider();
+        const ADMIN_EMAIL = "tu-correo@gmail.com"; // CAMBIA ESTO
+
+        // --- GESTIÓN DE DATOS ---
+
+        // Guardar
+        window.saveData = async () => {
+            const user = auth.currentUser;
+            if (!user || user.email !== ADMIN_EMAIL) return alert("No autorizado");
+            
+            const nombre = document.getElementById('name').value;
+            const coords = document.getElementById('coords').value;
+            
+            if(!nombre || !coords) return alert("Rellena los campos");
+
+            await addDoc(collection(db, "jugadores"), { nombre, coords });
+            document.getElementById('name').value = "";
+            document.getElementById('coords').value = "";
+        };
+
+        // Eliminar
+        window.deletePlayer = async (id) => {
+            const user = auth.currentUser;
+            if (user && user.email === ADMIN_EMAIL) {
+                if(confirm("¿Seguro que quieres eliminar este registro?")) {
+                    await deleteDoc(doc(db, "jugadores", id));
+                }
+            }
+        };
+
+        // Escuchar cambios en tiempo real para la lista
+        onSnapshot(collection(db, "jugadores"), (snapshot) => {
+            const lista = document.getElementById('listaJugadores');
+            lista.innerHTML = "";
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                lista.innerHTML += `
+                    <div class="flex justify-between items-center bg-slate-700 p-3 rounded mb-2">
+                        <div>
+                            <span class="font-bold text-yellow-500">${data.nombre}</span> 
+                            <span class="text-sm text-slate-300 ml-2">(${data.coords})</span>
+                        </div>
+                        <button onclick="deletePlayer('${doc.id}')" class="text-red-400 hover:text-red-600 font-bold px-2">✕</button>
+                    </div>
+                `;
+            });
+        });
+
+        // --- CALCULADORA ---
+        window.calcularAtaque = () => {
+            const c1 = document.getElementById('origen').value.split('|');
+            const c2 = document.getElementById('destino').value.split('|');
+            const fechaLlegada = new Date(document.getElementById('horaLlegada').value);
+            const ahora = new Date();
+
+            if(c1.length < 2 || c2.length < 2 || isNaN(fechaLlegada)) return alert("Datos incompletos");
+
+            const dist = Math.sqrt(Math.pow(c2[0]-c1[0], 2) + Math.pow(c2[1]-c1[1], 2));
+            const minFaltantes = (fechaLlegada - ahora) / 60000;
+
+            const unidades = [
+                { n: "Espías", v: 9 }, { n: "Ligera", v: 10 }, { n: "Hachas/Lanzas", v: 18 },
+                { n: "Espadas", v: 22 }, { n: "Arietes/Catas", v: 30 }, { n: "Noble", v: 35 }
+            ];
+
+            let res = `<p class="mb-2 text-blue-300">Distancia: ${dist.toFixed(2)} casillas</p>`;
+            unidades.forEach(u => {
+                const tReq = dist * u.v;
+                const ok = minFaltantes >= tReq;
+                res += `<div class="flex justify-between border-b border-slate-700 py-1 ${ok ? 'text-green-400' : 'text-red-400 opacity-50'}">
+                    <span>${u.n}</span>
+                    <span>${ok ? 'POSIBLE' : 'DESCARTADO'} (${Math.round(tReq)} min)</span>
+                </div>`;
+            });
+            document.getElementById('resCalc').innerHTML = res;
+        };
+
+        window.login = () => signInWithPopup(auth, provider);
+    </script>
+</head>
+<body class="bg-slate-900 text-slate-100 p-4 min-h-screen font-sans">
+
+    <div class="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
+        
+        <!-- COLUMNA IZQUIERDA: GESTIÓN -->
+        <div>
+            <header class="mb-6">
+                <h1 class="text-3xl font-black text-yellow-500 italic">GT ADMIN</h1>
+                <button onclick="login()" class="text-xs bg-slate-800 px-2 py-1 rounded mt-2 border border-slate-600">Login Google</button>
+            </header>
+
+            <section class="bg-slate-800 p-5 rounded-xl shadow-2xl border border-slate-700">
+                <h2 class="text-lg font-bold mb-4">Añadir Objetivo</h2>
+                <div class="space-y-3">
+                    <input type="text" id="name" placeholder="Nombre Jugador" class="w-full bg-slate-900 p-2 rounded border border-slate-600">
+                    <input type="text" id="coords" placeholder="Coordenadas (500|500)" class="w-full bg-slate-900 p-2 rounded border border-slate-600">
+                    <button onclick="saveData()" class="w-full bg-yellow-600 hover:bg-yellow-500 py-2 rounded font-black transition">GUARDAR JUGADOR</button>
+                </div>
+
+                <h2 class="text-lg font-bold mt-8 mb-4 border-t border-slate-700 pt-4">Lista de Pueblos</h2>
+                <div id="listaJugadores" class="max-h-60 overflow-y-auto pr-2">
+                    <!-- Los datos aparecen aquí -->
+                </div>
+            </section>
+        </div>
+
+        <!-- COLUMNA DERECHA: CALCULADORA -->
+        <div>
+            <section class="bg-slate-800 p-5 rounded-xl shadow-2xl border border-slate-700 mt-0 md:mt-12">
+                <h2 class="text-xl font-bold mb-4 text-blue-400">Calculadora de Ataques</h2>
+                <div class="grid grid-cols-2 gap-2 mb-3">
+                    <input type="text" id="origen" placeholder="Origen" class="bg-slate-900 p-2 rounded border border-slate-600">
+                    <input type="text" id="destino" placeholder="Destino" class="bg-slate-900 p-2 rounded border border-slate-600">
+                </div>
+                <label class="text-xs text-slate-400">Hora estimada de impacto:</label>
+                <input type="datetime-local" id="horaLlegada" class="w-full bg-slate-900 p-2 rounded border border-slate-600 mb-4">
+                
+                <button onclick="calcularAtaque()" class="w-full bg-blue-700 hover:bg-blue-600 py-3 rounded font-black mb-4 transition">IDENTIFICAR TROPAS</button>
+                
+                <div id="resCalc" class="bg-slate-900 p-4 rounded-lg border border-blue-900/30 text-sm">
+                    Resultados del análisis...
+                </div>
+            </section>
+        </div>
+
+    </div>
+
+</body>
+</html>
