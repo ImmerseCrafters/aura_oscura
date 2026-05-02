@@ -4,31 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aura Oscura - Dashboard de Guerra</title>
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Fonts para dar aspecto épico -->
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Inter:wght@400;600&display=swap" rel="stylesheet">
     
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        body { font-family: 'Inter', sans-serif; background-color: #020617; }
         h1, h2, h3, .title-font { font-family: 'Cinzel', serif; }
-        /* Efecto de brillo para Aura Oscura */
-        .glow-purple { box-shadow: 0 0 15px rgba(147, 51, 234, 0.3); }
-        .glow-red { box-shadow: 0 0 15px rgba(220, 38, 38, 0.3); }
-        /* Scrollbar personalizada */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #0f172a; }
-        ::-webkit-scrollbar-thumb { background: #6b21a8; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #9333ea; }
+        .glow-purple { box-shadow: 0 0 20px rgba(147, 51, 234, 0.2); }
+        .glow-red { box-shadow: 0 0 20px rgba(220, 38, 38, 0.2); }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     </style>
 
-    <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-        // --- 1. CONFIGURACIÓN DE FIREBASE (¡Sustituye por tus datos!) ---
+        // --- CONFIGURACIÓN DE FIREBASE ---
         const firebaseConfig = {
   apiKey: "AIzaSyCRdip4voDHkV_b5r_Wl722fX8j7zUxTKg",
   authDomain: "aura-oscura.firebaseapp.com",
@@ -42,228 +34,168 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
         const provider = new GoogleAuthProvider();
-        
-        // --- 2. CONFIGURACIÓN DEL ADMINISTRADOR ---
-        const ADMIN_EMAIL = "tu-correo@gmail.com"; // CAMBIA ESTO POR TU CORREO
+        const ADMIN_EMAIL = "tu-correo@gmail.com"; 
 
-        // --- 3. GESTIÓN DE DATOS ---
+        // --- FUNCIONES DE AUTH ---
+        window.login = async () => {
+            try { await signInWithPopup(auth, provider); } 
+            catch (error) { alert("Error: " + error.message); }
+        };
+
+        window.logout = async () => {
+            try { await signOut(auth); alert("Sesión cerrada"); } 
+            catch (error) { alert("Error al salir"); }
+        };
+
+        // --- GESTIÓN DE DATOS ---
         window.saveData = async () => {
             const user = auth.currentUser;
-            if (!user || user.email !== ADMIN_EMAIL) return alert("El Aura Oscura te rechaza. No eres el administrador.");
+            if (!user || user.email !== ADMIN_EMAIL) return alert("No tienes permiso.");
             
             const nombre = document.getElementById('name').value;
-            const coords = document.getElementById('coords').value;
+            const x = document.getElementById('regX').value;
+            const y = document.getElementById('regY').value;
             
-            if(!nombre || !coords) return alert("Faltan datos para el ritual (Rellena nombre y coordenadas).");
+            if(!nombre || !x || !y) return alert("Completa todos los campos rituales.");
 
-            try {
-                await addDoc(collection(db, "jugadores"), { nombre, coords });
-                document.getElementById('name').value = "";
-                document.getElementById('coords').value = "";
-            } catch (error) {
-                alert("Error al guardar: " + error.message);
-            }
+            await addDoc(collection(db, "jugadores"), { nombre, coords: `${x}|${y}` });
+            document.getElementById('name').value = "";
+            document.getElementById('regX').value = "";
+            document.getElementById('regY').value = "";
         };
 
         window.deletePlayer = async (id) => {
-            const user = auth.currentUser;
-            if (user && user.email === ADMIN_EMAIL) {
-                if(confirm("¿Condenar este pueblo al olvido? (Eliminar)")) {
-                    await deleteDoc(doc(db, "jugadores", id));
-                }
-            } else {
-                alert("No tienes el poder para eliminar registros.");
+            if (auth.currentUser?.email === ADMIN_EMAIL && confirm("¿Eliminar?")) {
+                await deleteDoc(doc(db, "jugadores", id));
             }
         };
 
-        // Escuchar BBDD en tiempo real
         onSnapshot(collection(db, "jugadores"), (snapshot) => {
             const lista = document.getElementById('listaJugadores');
             lista.innerHTML = "";
             snapshot.forEach((doc) => {
                 const data = doc.data();
                 lista.innerHTML += `
-                    <div class="flex justify-between items-center bg-slate-800/80 p-3 rounded-lg mb-2 border border-purple-900/50 hover:border-purple-600 transition">
-                        <div>
-                            <span class="font-bold text-purple-400">${data.nombre}</span> 
-                            <span class="text-sm text-slate-400 ml-2 font-mono">[${data.coords}]</span>
-                        </div>
-                        <button onclick="deletePlayer('${doc.id}')" class="text-red-500 hover:text-red-400 font-bold px-2 text-lg drop-shadow-md transition">⚔️</button>
-                    </div>
-                `;
+                    <div class="flex justify-between items-center bg-slate-900/50 p-3 rounded-lg mb-2 border border-purple-900/30">
+                        <div><span class="text-purple-400 font-bold">${data.nombre}</span> <span class="text-xs text-slate-500 ml-2 font-mono">${data.coords}</span></div>
+                        <button onclick="deletePlayer('${doc.id}')" class="text-red-500 hover:text-white transition">✕</button>
+                    </div>`;
             });
-        }, (error) => {
-            console.error("Error leyendo BBDD:", error);
         });
 
-        // --- 4. CALCULADORA Y PUEBLOS CERCANOS ---
+        // --- CALCULADORA ---
         window.calcularAtaque = async () => {
-            const origenRaw = document.getElementById('origen').value;
-            const destinoRaw = document.getElementById('destino').value;
+            const ox = document.getElementById('origX').value;
+            const oy = document.getElementById('origY').value;
+            const dx = document.getElementById('destX').value;
+            const dy = document.getElementById('destY').value;
             const fechaLlegada = new Date(document.getElementById('horaLlegada').value);
             const ahora = new Date();
 
-            if(!origenRaw.includes('|') || !destinoRaw.includes('|') || isNaN(fechaLlegada)) {
-                return alert("Las coordenadas deben tener el formato xxx|yyy y la fecha debe ser válida.");
-            }
+            if(!ox || !oy || !dx || !dy || isNaN(fechaLlegada)) return alert("Datos incompletos");
 
-            const c1 = origenRaw.split('|');
-            const c2 = destinoRaw.split('|');
-            const distTarget = Math.sqrt(Math.pow(c2[0]-c1[0], 2) + Math.pow(c2[1]-c1[1], 2));
+            const dist = Math.sqrt(Math.pow(dx-ox, 2) + Math.pow(dy-oy, 2));
             const minFaltantes = (fechaLlegada - ahora) / 60000;
 
             const unidades = [
-                { n: "Espías", v: 9 }, { n: "Ligera / Paladín", v: 10 }, { n: "Pesada", v: 11 }, { n: "Hachas/Lanzas", v: 18 },
+                { n: "Espías", v: 9 }, { n: "Ligera", v: 10 }, { n: "Hachas/Lanzas", v: 18 },
                 { n: "Espadas", v: 22 }, { n: "Arietes/Catas", v: 30 }, { n: "Noble", v: 35 }
             ];
 
-            let resIdentificacion = `<p class="mb-3 text-purple-300 font-bold text-center border-b border-purple-800 pb-2">Distancia: ${distTarget.toFixed(2)} casillas</p>`;
+            let resH = `<p class="text-purple-300 font-bold text-center mb-2">Distancia: ${dist.toFixed(2)}</p>`;
             unidades.forEach(u => {
-                const tReq = distTarget * u.v;
+                const tReq = dist * u.v;
                 const ok = minFaltantes >= tReq;
-                resIdentificacion += `<div class="flex justify-between border-b border-slate-700/50 py-1.5 ${ok ? 'text-green-400 font-semibold' : 'text-slate-600'}">
-                    <span>${u.n}</span>
-                    <span>${ok ? '⚠️ POSIBLE' : 'Descartado'} <span class="text-xs text-slate-500">(${Math.round(tReq)}m)</span></span>
+                resH += `<div class="flex justify-between text-xs py-1 border-b border-slate-800 ${ok ? 'text-green-400' : 'text-slate-600'}">
+                    <span>${u.n}</span><span>${ok ? 'POSIBLE' : 'No llega'}</span>
                 </div>`;
             });
-            document.getElementById('resCalc').innerHTML = resIdentificacion;
+            document.getElementById('resCalc').innerHTML = resH;
 
-            // Lógica de Pueblos Cercanos
-            try {
-                const snapshot = await getDocs(collection(db, "jugadores"));
-                let pueblosCercanos = [];
-
-                snapshot.forEach((doc) => {
-                    const data = doc.data();
-                    const pCoord = data.coords.split('|');
-                    const d = Math.sqrt(Math.pow(c2[0]-pCoord[0], 2) + Math.pow(c2[1]-pCoord[1], 2));
-                    pueblosCercanos.push({ ...data, distancia: d });
-                });
-
-                pueblosCercanos.sort((a, b) => a.distancia - b.distancia);
-
-                let resCercania = `<h3 class="text-purple-400 font-bold mb-3 border-b border-purple-900 pb-1 flex items-center gap-2">🛡️ Apoyos más cercanos</h3>`;
-                if (pueblosCercanos.length === 0) {
-                    resCercania += `<p class="text-sm text-slate-500">No hay tropas del Aura Oscura registradas.</p>`;
-                } else {
-                    pueblosCercanos.slice(0, 5).forEach(p => {
-                        resCercania += `
-                            <div class="flex justify-between text-sm mb-2 bg-slate-900/50 p-2 rounded border border-purple-900/30">
-                                <span class="font-semibold text-slate-200">${p.nombre} <span class="font-normal text-slate-500 ml-1">[${p.coords}]</span></span>
-                                <span class="text-purple-400 font-mono">${p.distancia.toFixed(1)} c.</span>
-                            </div>`;
-                    });
-                }
-                document.getElementById('listaCercania').innerHTML = resCercania;
-            } catch (error) {
-                console.error("Error obteniendo pueblos:", error);
-            }
+            // Cercanías
+            const snapshot = await getDocs(collection(db, "jugadores"));
+            let pueblos = [];
+            snapshot.forEach(doc => {
+                const d = doc.data();
+                const [px, py] = d.coords.split('|');
+                const distApoyo = Math.sqrt(Math.pow(dx-px, 2) + Math.pow(dy-py, 2));
+                pueblos.push({...d, distApoyo});
+            });
+            pueblos.sort((a,b) => a.distApoyo - b.distApoyo);
+            
+            let cerH = `<h3 class="text-purple-400 text-xs font-bold mb-2">Cercanías al Destino:</h3>`;
+            pueblos.slice(0, 5).forEach(p => {
+                cerH += `<div class="flex justify-between text-[10px] mb-1 bg-slate-800/40 p-1 rounded">
+                    <span>${p.nombre}</span><span class="text-purple-400">${p.distApoyo.toFixed(1)}c</span>
+                </div>`;
+            });
+            document.getElementById('listaCercania').innerHTML = cerH;
         };
 
-        // --- 5. LOGIN CON GESTIÓN DE ERRORES ---
-        window.login = async () => {
-            try {
-                await signInWithPopup(auth, provider);
-            } catch (error) {
-                console.error("Error de Auth:", error);
-                alert("El login falló.\nCódigo de error: " + error.code + "\nMensaje: " + error.message + "\n\n¿Has habilitado Google Auth en Firebase y añadido tu dominio en Authorized Domains?");
-            }
-        };
-        
         onAuthStateChanged(auth, (user) => {
-            const btn = document.getElementById('loginBtn');
+            const container = document.getElementById('authControls');
             if (user) {
-                btn.innerHTML = `Conectado: <span class="text-purple-300">${user.email}</span>`;
-                btn.classList.replace('bg-slate-800', 'bg-slate-900');
-                btn.classList.add('border-purple-500', 'glow-purple');
+                container.innerHTML = `<span class="text-[10px] text-slate-400 mr-2">${user.email}</span>
+                                       <button onclick="logout()" class="bg-red-900/50 hover:bg-red-700 text-white px-3 py-1 rounded text-xs transition">Salir</button>`;
             } else {
-                btn.innerText = "Invocar Admin (Login)";
-                btn.classList.replace('bg-slate-900', 'bg-slate-800');
-                btn.classList.remove('border-purple-500', 'glow-purple');
+                container.innerHTML = `<button onclick="login()" class="bg-purple-900/50 hover:bg-purple-700 text-white px-4 py-1 rounded text-xs transition">Login Admin</button>`;
             }
         });
     </script>
 </head>
-<body class="bg-slate-950 text-slate-200 p-4 md:p-8 min-h-screen relative overflow-x-hidden">
+<body class="text-slate-200 p-4 min-h-screen">
 
-    <!-- Fondo decorativo sutil -->
-    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-purple-900/10 rounded-full blur-[120px] pointer-events-none -z-10"></div>
+    <div class="max-w-5xl mx-auto">
+        <header class="flex justify-between items-center mb-8 border-b border-purple-900/30 pb-4">
+            <div>
+                <h1 class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-red-500 tracking-tighter">AURA OSCURA</h1>
+            </div>
+            <div id="authControls"></div>
+        </header>
 
-    <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-10 relative z-10">
-        
-        <!-- COLUMNA IZQUIERDA: GESTIÓN -->
-        <div>
-            <header class="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h1 class="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-red-600 tracking-widest drop-shadow-lg">AURA OSCURA</h1>
-                    <p class="text-slate-500 text-sm mt-1 uppercase tracking-widest">Panel de Comando</p>
-                </div>
-                <button id="loginBtn" onclick="login()" class="text-xs bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded border border-slate-700 transition shadow-lg uppercase tracking-wider font-bold">Invocar Admin</button>
-            </header>
-
-            <section class="bg-slate-900/80 backdrop-blur-sm p-6 md:p-8 rounded-2xl shadow-2xl border border-purple-900/40 glow-purple">
-                <h2 class="text-xl mb-6 flex items-center text-purple-400 border-b border-purple-900/50 pb-2">
-                    <span class="mr-2">🗡️</span> Registrar Fuerzas
-                </h2>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- PANEL REGISTRO -->
+            <section class="bg-slate-900/80 p-6 rounded-2xl border border-purple-900/40 glow-purple">
+                <h2 class="text-purple-400 text-sm font-bold mb-4 uppercase tracking-widest">Registrar Pueblo</h2>
                 <div class="space-y-4">
-                    <div>
-                        <label class="text-xs text-purple-400/70 ml-1 uppercase tracking-wide">Identificación</label>
-                        <input type="text" id="name" placeholder="Ej: Señor Oscuro / Aldea Main" class="w-full bg-slate-950 p-3 rounded-lg border border-slate-800 focus:border-purple-500 outline-none transition text-slate-200 mt-1">
+                    <input type="text" id="name" placeholder="Nombre del Jugador" class="w-full bg-slate-950 p-3 rounded border border-slate-800 outline-none focus:border-purple-600">
+                    <div class="flex gap-2">
+                        <input type="number" id="regX" placeholder="Coord X" class="w-1/2 bg-slate-950 p-3 rounded border border-slate-800 outline-none focus:border-purple-600 text-center">
+                        <input type="number" id="regY" placeholder="Coord Y" class="w-1/2 bg-slate-950 p-3 rounded border border-slate-800 outline-none focus:border-purple-600 text-center">
                     </div>
-                    <div>
-                        <label class="text-xs text-purple-400/70 ml-1 uppercase tracking-wide">Ubicación</label>
-                        <input type="text" id="coords" placeholder="Ej: 500|500" class="w-full bg-slate-950 p-3 rounded-lg border border-slate-800 focus:border-purple-500 outline-none transition text-slate-200 mt-1">
-                    </div>
-                    <button onclick="saveData()" class="w-full bg-gradient-to-r from-purple-800 to-purple-600 hover:from-purple-700 hover:to-purple-500 py-3 rounded-lg font-black transition shadow-lg text-white uppercase tracking-widest mt-4 border border-purple-500/30">Registrar en el Códice</button>
+                    <button onclick="saveData()" class="w-full bg-purple-700 hover:bg-purple-600 py-3 rounded-lg font-bold transition uppercase text-sm">Guardar</button>
                 </div>
+                <div id="listaJugadores" class="mt-6 max-h-60 overflow-y-auto pr-2 text-sm"></div>
+            </section>
 
-                <h2 class="text-xl mt-10 mb-4 flex items-center text-purple-400 border-b border-purple-900/50 pb-2">
-                    <span class="mr-2">📜</span> Dominios Registrados
-                </h2>
-                <div id="listaJugadores" class="max-h-[400px] overflow-y-auto pr-3">
-                    <p class="text-slate-500 text-sm italic text-center py-4">Estableciendo conexión con el vacío...</p>
+            <!-- CALCULADORA -->
+            <section class="bg-slate-900/80 p-6 rounded-2xl border border-red-900/30 glow-red">
+                <h2 class="text-red-500 text-sm font-bold mb-4 uppercase tracking-widest">Oráculo de Ataque</h2>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="space-y-1">
+                        <label class="text-[10px] text-slate-500 uppercase">Origen (Enemigo)</label>
+                        <div class="flex gap-1">
+                            <input type="number" id="origX" placeholder="X" class="w-full bg-slate-950 p-2 rounded border border-slate-800 text-center">
+                            <input type="number" id="origY" placeholder="Y" class="w-full bg-slate-950 p-2 rounded border border-slate-800 text-center">
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[10px] text-slate-500 uppercase">Destino (Tribu)</label>
+                        <div class="flex gap-1">
+                            <input type="number" id="destX" placeholder="X" class="w-full bg-slate-950 p-2 rounded border border-slate-800 text-center">
+                            <input type="number" id="destY" placeholder="Y" class="w-full bg-slate-950 p-2 rounded border border-slate-800 text-center">
+                        </div>
+                    </div>
+                </div>
+                <input type="datetime-local" id="horaLlegada" class="w-full bg-slate-950 p-3 rounded border border-slate-800 mb-4 text-sm" style="color-scheme:dark">
+                <button onclick="calcularAtaque()" class="w-full bg-red-700 hover:bg-red-600 py-3 rounded-lg font-bold transition uppercase text-sm mb-6">Analizar</button>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div id="resCalc" class="bg-black/40 p-3 rounded-lg border border-slate-800 min-h-[100px]"></div>
+                    <div id="listaCercania" class="bg-black/40 p-3 rounded-lg border border-slate-800 min-h-[100px]"></div>
                 </div>
             </section>
         </div>
-
-        <!-- COLUMNA DERECHA: CALCULADORA -->
-        <div class="mt-0 lg:mt-6">
-            <section class="bg-slate-900/80 backdrop-blur-sm p-6 md:p-8 rounded-2xl shadow-2xl border border-red-900/30 glow-red">
-                <h2 class="text-2xl mb-6 text-red-500 flex items-center border-b border-red-900/30 pb-2">
-                    <span class="mr-2">🔥</span> Oráculo de Guerra
-                </h2>
-                
-                <div class="grid grid-cols-2 gap-4 mb-5">
-                    <div>
-                        <label class="text-xs text-red-400/70 ml-1 uppercase tracking-wide">Origen (Enemigo)</label>
-                        <input type="text" id="origen" placeholder="xxx|yyy" class="w-full bg-slate-950 p-3 rounded-lg border border-slate-800 focus:border-red-500 outline-none transition text-slate-200 mt-1">
-                    </div>
-                    <div>
-                        <label class="text-xs text-red-400/70 ml-1 uppercase tracking-wide">Destino (Tribu)</label>
-                        <input type="text" id="destino" placeholder="xxx|yyy" class="w-full bg-slate-950 p-3 rounded-lg border border-slate-800 focus:border-red-500 outline-none transition text-slate-200 mt-1">
-                    </div>
-                </div>
-
-                <div class="mb-6">
-                    <label class="text-xs text-red-400/70 ml-1 uppercase tracking-wide">Impacto Inminente</label>
-                    <input type="datetime-local" id="horaLlegada" class="w-full bg-slate-950 p-3 rounded-lg border border-slate-800 text-slate-200 focus:border-red-500 outline-none transition mt-1 color-scheme-dark" style="color-scheme: dark;">
-                </div>
-                
-                <button onclick="calcularAtaque()" class="w-full bg-gradient-to-r from-red-800 to-red-600 hover:from-red-700 hover:to-red-500 py-4 rounded-lg font-black transition shadow-lg tracking-widest text-white uppercase border border-red-500/30">Desentrañar Ataque</button>
-                
-                <!-- Resultados -->
-                <div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mt-8">
-                    <div id="resCalc" class="bg-slate-950/80 p-5 rounded-xl border border-slate-800 text-sm shadow-inner">
-                        <p class="text-slate-500 italic text-center mt-4">Esperando coordenadas...</p>
-                    </div>
-
-                    <div id="listaCercania" class="bg-slate-950/80 p-5 rounded-xl border border-slate-800 text-sm shadow-inner">
-                        <p class="text-slate-500 italic text-center mt-4">Las tropas más cercanas responderán al llamado aquí...</p>
-                    </div>
-                </div>
-            </section>
-        </div>
-
     </div>
 
 </body>
