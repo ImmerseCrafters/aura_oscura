@@ -3,27 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aura Oscura - Gestión de Guerra</title>
+    <title>Aura Oscura - Códice Jerárquico</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Inter:wght@400;600&display=swap" rel="stylesheet">
     
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #020617; color: #e2e8f0; }
-        h1, h2, h3, .title-font { font-family: 'Cinzel', serif; }
-        .glow-purple { box-shadow: 0 0 20px rgba(147, 51, 234, 0.15); }
-        .glow-red { box-shadow: 0 0 20px rgba(220, 38, 38, 0.15); }
-        .custom-scroll::-webkit-scrollbar { width: 5px; }
-        .custom-scroll::-webkit-scrollbar-track { background: #0f172a; }
+        h1, h2, h3 { font-family: 'Cinzel', serif; }
+        .glow-purple { box-shadow: 0 0 20px rgba(147, 51, 234, 0.1); }
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #4c1d95; border-radius: 10px; }
         input { color-scheme: dark; }
     </style>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
         import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-        // --- CONFIGURACIÓN DE FIREBASE ---
         const firebaseConfig = {
   apiKey: "AIzaSyCRdip4voDHkV_b5r_Wl722fX8j7zUxTKg",
   authDomain: "aura-oscura.firebaseapp.com",
@@ -37,197 +34,182 @@
         const db = getFirestore(app);
         const auth = getAuth(app);
         const provider = new GoogleAuthProvider();
-        const ADMIN_EMAIL = "manuel943006@gmail.com"; // TU CORREO AQUÍ
+        const ADMIN_EMAIL = "manuel943006@gmail.com"; 
 
-        // --- AUTH ---
-        window.login = () => signInWithPopup(auth, provider).catch(e => alert(e.message));
+        window.login = () => signInWithPopup(auth, provider);
         window.logout = () => signOut(auth);
 
-        // --- GESTIÓN DE DATOS (GUARDAR) ---
-        window.saveData = async () => {
-            const user = auth.currentUser;
-            if (!user || user.email !== ADMIN_EMAIL) return alert("Acceso denegado: No eres el administrador.");
+        // --- GESTIÓN DE JUGADORES Y PUEBLOS ---
+
+        // 1. Guardar Jugador y su primer pueblo
+        window.saveNewPlayer = async () => {
+            if (auth.currentUser?.email !== ADMIN_EMAIL) return alert("No autorizado");
             
-            const nombre = document.getElementById('name').value;
-            const x = document.getElementById('regX').value;
-            const y = document.getElementById('regY').value;
-            
-            if(!nombre || !x || !y) return alert("Faltan datos en el registro.");
+            const nombre = document.getElementById('playerName').value;
+            const x = document.getElementById('pX').value;
+            const y = document.getElementById('pY').value;
+
+            if(!nombre || !x || !y) return alert("Datos incompletos");
 
             try {
-                await addDoc(collection(db, "jugadores"), { nombre, coords: `${x}|${y}` });
-                document.getElementById('name').value = "";
-                document.getElementById('regX').value = "";
-                document.getElementById('regY').value = "";
-            } catch (e) { alert("Error al guardar: " + e.message); }
+                // Creamos el jugador
+                const playerRef = await addDoc(collection(db, "miembros"), { nombre });
+                // Añadimos su primer pueblo a una subcolección
+                await addDoc(collection(db, "miembros", playerRef.id, "pueblos"), { 
+                    coords: `${x}|${y}`,
+                    fecha: new Date()
+                });
+                
+                document.getElementById('playerName').value = "";
+                document.getElementById('pX').value = ""; document.getElementById('pY').value = "";
+            } catch (e) { alert(e.message); }
         };
 
-        // --- GESTIÓN DE DATOS (ELIMINAR) ---
-        window.deletePlayer = async (id) => {
-            if (auth.currentUser?.email === ADMIN_EMAIL && confirm("¿Eliminar este registro del Códice?")) {
-                await deleteDoc(doc(db, "jugadores", id));
+        // 2. Añadir pueblo extra a un jugador existente
+        window.addVillageToPlayer = async (playerId) => {
+            const x = prompt("Coordenada X:");
+            const y = prompt("Coordenada Y:");
+            if(!x || !y) return;
+
+            await addDoc(collection(db, "miembros", playerId, "pueblos"), { 
+                coords: `${x}|${y}`,
+                fecha: new Date()
+            });
+        };
+
+        // 3. Eliminar Jugador completo
+        window.deleteFullPlayer = async (id) => {
+            if (confirm("¿Eliminar al jugador y todos sus pueblos?")) {
+                await deleteDoc(doc(db, "miembros", id));
             }
         };
 
-        // --- LISTAR PUEBLOS (ESTO ES LO QUE TE FALTABA) ---
-        onSnapshot(collection(db, "jugadores"), (snapshot) => {
-            const lista = document.getElementById('listaRegistrados');
-            if (snapshot.empty) {
-                lista.innerHTML = `<p class="text-slate-600 text-center text-xs py-10 uppercase tracking-widest italic">El Códice está vacío...</p>`;
-                return;
-            }
+        // 4. LISTADO JERÁRQUICO
+        onSnapshot(collection(db, "miembros"), (snapshot) => {
+            const lista = document.getElementById('codiceLista');
             lista.innerHTML = "";
-            snapshot.forEach((doc) => {
-                const data = doc.data();
-                lista.innerHTML += `
-                    <div class="flex justify-between items-center bg-slate-950/50 p-3 rounded-lg mb-2 border border-purple-900/20 hover:border-purple-500/40 transition">
-                        <div>
-                            <p class="text-purple-400 font-bold text-sm">${data.nombre}</p>
-                            <p class="text-[10px] text-slate-500 font-mono">COORD: ${data.coords}</p>
+
+            snapshot.forEach((playerDoc) => {
+                const player = playerDoc.data();
+                const playerDiv = document.createElement('div');
+                playerDiv.className = "bg-slate-900/80 p-4 rounded-xl border border-purple-900/30 mb-4 glow-purple";
+                
+                playerDiv.innerHTML = `
+                    <div class="flex justify-between items-center border-b border-purple-900/20 pb-2 mb-3">
+                        <h3 class="text-purple-400 font-bold uppercase tracking-widest text-sm">${player.nombre}</h3>
+                        <div class="flex gap-2">
+                            <button onclick="addVillageToPlayer('${playerDoc.id}')" class="text-[10px] bg-purple-900/40 px-2 py-1 rounded hover:bg-purple-600 transition">+ Pueblo</button>
+                            <button onclick="deleteFullPlayer('${playerDoc.id}')" class="text-red-500 text-xs">✕</button>
                         </div>
-                        <button onclick="deletePlayer('${doc.id}')" class="text-red-900 hover:text-red-500 transition px-2">✕</button>
-                    </div>`;
+                    </div>
+                    <div id="pueblos-${playerDoc.id}" class="grid grid-cols-2 gap-2 text-[11px]"></div>
+                `;
+                lista.appendChild(playerDiv);
+
+                // Escuchar subcolección de pueblos para este jugador
+                onSnapshot(collection(db, "miembros", playerDoc.id, "pueblos"), (pSnapshot) => {
+                    const pueblosDiv = document.getElementById(`pueblos-${playerDoc.id}`);
+                    pueblosDiv.innerHTML = "";
+                    pSnapshot.forEach(pDoc => {
+                        pueblosDiv.innerHTML += `<div class="bg-black/40 p-1.5 rounded text-slate-400 font-mono text-center border border-slate-800">${pDoc.data().coords}</div>`;
+                    });
+                });
             });
         });
 
-        // --- CALCULADORA ---
+        // --- CALCULADORA (Búsqueda en toda la jerarquía) ---
         window.calcularAtaque = async () => {
             const ox = document.getElementById('origX').value; const oy = document.getElementById('origY').value;
             const dx = document.getElementById('destX').value; const dy = document.getElementById('destY').value;
             const fechaLlegada = new Date(document.getElementById('horaLlegada').value);
-            const ahora = new Date();
-
-            if(!ox || !oy || !dx || !dy || isNaN(fechaLlegada)) return alert("Faltan coordenadas o fecha.");
+            if(!ox || !oy || !dx || !dy || isNaN(fechaLlegada)) return alert("Faltan datos");
 
             const dist = Math.sqrt(Math.pow(dx-ox, 2) + Math.pow(dy-oy, 2));
-            const minFaltantes = (fechaLlegada - ahora) / 60000;
+            const minFaltantes = (fechaLlegada - new Date()) / 60000;
 
-            const unidades = [
-                { n: "Espías", v: 9 }, { n: "Ligera", v: 10 }, { n: "Hachas/Lanzas", v: 18 },
-                { n: "Espadas", v: 22 }, { n: "Arietes/Catas", v: 30 }, { n: "Noble", v: 35 }
-            ];
-
-            // Identificación
-            let resH = `<h3 class="text-red-500 text-xs font-bold mb-3 border-b border-red-900/30 pb-1">Identificación:</h3>`;
-            unidades.forEach(u => {
-                const tReq = dist * u.v;
-                const ok = minFaltantes >= tReq;
-                resH += `<div class="flex justify-between text-[11px] py-1 border-b border-slate-900/50 ${ok ? 'text-green-400 font-bold' : 'text-slate-700'}">
-                    <span>${u.n}</span><span>${ok ? '⚠️ POSIBLE' : 'DESCARTADO'}</span>
-                </div>`;
+            // Identificación simple
+            let resIdent = `<p class="text-center text-red-500 text-xs font-bold mb-2">IDENTIFICACIÓN:</p>`;
+            [{n:"Ligera",v:10},{n:"Hachas",v:18},{n:"Espadas",v:22},{n:"Arietes",v:30},{n:"Noble",v:35}].forEach(u => {
+                const t = dist * u.v;
+                if(minFaltantes >= t) resIdent += `<div class="text-[10px] flex justify-between border-b border-slate-800 py-1"><span>${u.n}</span><span class="text-green-500">SI</span></div>`;
             });
-            document.getElementById('resCalc').innerHTML = resH;
+            document.getElementById('resCalc').innerHTML = resIdent;
 
-            // Cercanías (Filtrado de los pueblos registrados)
-            const snapshot = await getDocs(collection(db, "jugadores"));
-            let pueblos = [];
-            snapshot.forEach(d => {
-                const data = d.data();
-                const [px, py] = data.coords.split('|');
-                const dApoyo = Math.sqrt(Math.pow(dx-px, 2) + Math.pow(dy-py, 2));
-                pueblos.push({...data, dApoyo});
-            });
-            pueblos.sort((a,b) => a.dApoyo - b.dApoyo);
+            // Búsqueda de cercanía en todos los usuarios
+            const mSnap = await getDocs(collection(db, "miembros"));
+            let todosLosPueblos = [];
             
-            let cerH = `<h3 class="text-purple-400 text-xs font-bold mb-3 border-b border-purple-900/30 pb-1">Apoyos Cercanos:</h3>`;
-            pueblos.slice(0, 5).forEach(p => {
-                cerH += `<div class="flex justify-between text-[11px] mb-2 bg-slate-900/80 p-2 rounded border border-purple-900/20">
-                    <span class="text-slate-300 font-semibold">${p.nombre}</span>
-                    <span class="text-purple-400 font-mono">${p.dApoyo.toFixed(1)} c.</span>
-                </div>`;
+            for (const mDoc of mSnap.docs) {
+                const pSnap = await getDocs(collection(db, "miembros", mDoc.id, "pueblos"));
+                pSnap.forEach(pDoc => {
+                    const [px, py] = pDoc.data().coords.split('|');
+                    const d = Math.sqrt(Math.pow(dx-px, 2) + Math.pow(dy-py, 2));
+                    todosLosPueblos.push({ nombre: mDoc.data().nombre, coords: pDoc.data().coords, d });
+                });
+            }
+            
+            todosLosPueblos.sort((a,b) => a.d - b.d);
+            let resCer = `<p class="text-center text-purple-500 text-xs font-bold mb-2">APOYOS:</p>`;
+            todosLosPueblos.slice(0, 5).forEach(p => {
+                resCer += `<div class="text-[9px] mb-1 bg-slate-900 p-1 rounded flex justify-between"><span>${p.nombre}</span><span class="text-purple-400">${p.d.toFixed(1)}c</span></div>`;
             });
-            document.getElementById('listaCercania').innerHTML = cerH;
+            document.getElementById('listaCercania').innerHTML = resCer;
         };
 
-        // --- ESTADO DE SESIÓN ---
         onAuthStateChanged(auth, (user) => {
-            const container = document.getElementById('authArea');
-            if (user) {
-                container.innerHTML = `
-                    <span class="text-[10px] text-slate-500 hidden md:inline mr-2">${user.email}</span>
-                    <button onclick="logout()" class="bg-red-950/40 hover:bg-red-700 border border-red-900 text-white px-3 py-1 rounded text-xs transition">Cerrar Sesión</button>`;
-            } else {
-                container.innerHTML = `<button onclick="login()" class="bg-purple-900/60 hover:bg-purple-700 border border-purple-500 text-white px-4 py-1 rounded text-xs transition uppercase font-bold">Login Admin</button>`;
-            }
+            const area = document.getElementById('authArea');
+            if (user) { area.innerHTML = `<button onclick="logout()" class="text-[10px] bg-red-900/30 border border-red-800 p-1 rounded">Salir</button>`; }
+            else { area.innerHTML = `<button onclick="login()" class="text-[10px] bg-purple-900/30 border border-purple-800 p-1 rounded">Login</button>`; }
         });
     </script>
 </head>
-<body class="p-4 md:p-8 min-h-screen">
-
-    <div class="max-w-6xl mx-auto">
-        <!-- HEADER -->
-        <header class="flex justify-between items-center mb-10 border-b border-purple-900/30 pb-6">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-purple-600 rounded-full blur-lg opacity-20 absolute"></div>
-                <h1 class="text-3xl md:text-4xl font-black tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-red-600 relative">AURA OSCURA</h1>
-            </div>
+<body class="p-4 flex flex-col items-center">
+    
+    <div class="w-full max-w-5xl">
+        <header class="flex justify-between items-center mb-8 border-b border-purple-900/20 pb-4">
+            <h1 class="text-2xl font-black tracking-widest text-purple-600">AURA OSCURA</h1>
             <div id="authArea"></div>
         </header>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
             
-            <!-- PANEL IZQUIERDO: REGISTRO Y LISTA -->
-            <div class="space-y-6">
-                <section class="bg-slate-900/60 p-6 rounded-2xl border border-purple-900/30 glow-purple backdrop-blur-md">
-                    <h2 class="text-purple-400 text-xs font-bold mb-6 uppercase tracking-[0.3em] flex items-center">
-                        <span class="w-8 h-px bg-purple-900 mr-2"></span> Registrar Dominio
-                    </h2>
-                    <div class="space-y-4">
-                        <input type="text" id="name" placeholder="Nombre del Usuario / Pueblo" class="w-full bg-slate-950 p-3 rounded-lg border border-slate-800 outline-none focus:border-purple-600 transition text-sm">
-                        <div class="flex gap-3">
-                            <input type="number" id="regX" placeholder="Coord X" class="w-1/2 bg-slate-950 p-3 rounded-lg border border-slate-800 outline-none focus:border-purple-600 text-center text-sm">
-                            <input type="number" id="regY" placeholder="Coord Y" class="w-1/2 bg-slate-950 p-3 rounded-lg border border-slate-800 outline-none focus:border-purple-600 text-center text-sm">
-                        </div>
-                        <button onclick="saveData()" class="w-full bg-purple-700 hover:bg-purple-600 py-3 rounded-lg font-black transition uppercase text-xs tracking-widest shadow-lg">Guardar en Códice</button>
+            <!-- SECCIÓN JUGADORES -->
+            <section>
+                <div class="bg-slate-900/40 p-6 rounded-2xl border border-purple-900/20 mb-6">
+                    <h2 class="text-xs font-bold text-purple-400 uppercase mb-4 tracking-widest">Nuevo Miembro</h2>
+                    <input type="text" id="playerName" placeholder="Nombre Jugador" class="w-full bg-black/40 p-2 rounded mb-2 border border-slate-800 text-sm">
+                    <div class="flex gap-2 mb-4">
+                        <input type="number" id="pX" placeholder="X" class="w-1/2 bg-black/40 p-2 rounded border border-slate-800 text-center">
+                        <input type="number" id="pY" placeholder="Y" class="w-1/2 bg-black/40 p-2 rounded border border-slate-800 text-center">
                     </div>
-                </section>
+                    <button onclick="saveNewPlayer()" class="w-full bg-purple-700 py-2 rounded font-bold text-xs uppercase tracking-widest">Registrar Jugador</button>
+                </div>
 
-                <!-- ESTO ES LO NUEVO: LISTA DE PUEBLOS SIEMPRE VISIBLE -->
-                <section class="bg-slate-900/40 p-6 rounded-2xl border border-slate-800/50">
-                    <h2 class="text-slate-400 text-[10px] font-bold mb-4 uppercase tracking-[0.3em]">Códice de Miembros</h2>
-                    <div id="listaRegistrados" class="max-h-[300px] overflow-y-auto pr-2 custom-scroll">
-                        <!-- Aquí se verán los pueblos registrados siempre -->
-                        <p class="text-slate-600 text-center text-xs py-10">Cargando...</p>
-                    </div>
-                </section>
-            </div>
+                <h2 class="text-[10px] font-bold text-slate-500 uppercase mb-4 tracking-[0.3em]">Códice de la Tribu</h2>
+                <div id="codiceLista" class="max-h-[500px] overflow-y-auto pr-2 custom-scroll">
+                    <!-- Jugadores y pueblos aparecerán aquí -->
+                </div>
+            </section>
 
-            <!-- PANEL DERECHO: CALCULADORA -->
-            <section class="bg-slate-900/60 p-6 rounded-2xl border border-red-900/20 glow-red backdrop-blur-md self-start">
-                <h2 class="text-red-500 text-xs font-bold mb-6 uppercase tracking-[0.3em] flex items-center">
-                    <span class="w-8 h-px bg-red-900 mr-2"></span> Oráculo de Guerra
-                </h2>
-                <div class="grid grid-cols-2 gap-6 mb-6">
-                    <div class="space-y-2">
-                        <label class="text-[9px] text-slate-500 uppercase tracking-tighter">Origen (Enemigo)</label>
-                        <div class="flex gap-2">
-                            <input type="number" id="origX" placeholder="X" class="w-full bg-slate-950 p-2 rounded-lg border border-slate-800 text-center text-sm focus:border-red-900 outline-none">
-                            <input type="number" id="origY" placeholder="Y" class="w-full bg-slate-950 p-2 rounded-lg border border-slate-800 text-center text-sm focus:border-red-900 outline-none">
-                        </div>
+            <!-- CALCULADORA -->
+            <section class="bg-slate-900/40 p-6 rounded-2xl border border-red-900/20 self-start">
+                <h2 class="text-xs font-bold text-red-500 uppercase mb-4 tracking-widest">Oráculo de Guerra</h2>
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="flex flex-col gap-1">
+                        <span class="text-[9px] text-slate-500">Origen</span>
+                        <div class="flex gap-1"><input type="number" id="origX" class="w-1/2 bg-black/40 p-2 rounded text-center"><input type="number" id="origY" class="w-1/2 bg-black/40 p-2 rounded text-center"></div>
                     </div>
-                    <div class="space-y-2">
-                        <label class="text-[9px] text-slate-500 uppercase tracking-tighter">Destino (Tribu)</label>
-                        <div class="flex gap-2">
-                            <input type="number" id="destX" placeholder="X" class="w-full bg-slate-950 p-2 rounded-lg border border-slate-800 text-center text-sm focus:border-red-900 outline-none">
-                            <input type="number" id="destY" placeholder="Y" class="w-full bg-slate-950 p-2 rounded-lg border border-slate-800 text-center text-sm focus:border-red-900 outline-none">
-                        </div>
+                    <div class="flex flex-col gap-1">
+                        <span class="text-[9px] text-slate-500">Destino</span>
+                        <div class="flex gap-1"><input type="number" id="destX" class="w-1/2 bg-black/40 p-2 rounded text-center"><input type="number" id="destY" class="w-1/2 bg-black/40 p-2 rounded text-center"></div>
                     </div>
                 </div>
+                <input type="datetime-local" id="horaLlegada" class="w-full bg-black/40 p-2 rounded mb-4 text-xs">
+                <button onclick="calcularAtaque()" class="w-full bg-red-800 py-3 rounded font-bold text-xs uppercase tracking-widest mb-6">Analizar</button>
                 
-                <div class="mb-6">
-                    <label class="text-[9px] text-slate-500 uppercase tracking-tighter">Hora de Impacto</label>
-                    <input type="datetime-local" id="horaLlegada" class="w-full bg-slate-950 p-3 rounded-lg border border-slate-800 text-sm mt-1 outline-none focus:border-red-900">
-                </div>
-                
-                <button onclick="calcularAtaque()" class="w-full bg-red-800 hover:bg-red-600 py-4 rounded-lg font-black transition uppercase text-xs tracking-widest shadow-lg mb-8">Analizar Amenaza</button>
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div id="resCalc" class="bg-black/30 p-4 rounded-xl border border-slate-900 min-h-[150px]">
-                        <p class="text-slate-700 text-[10px] text-center mt-10 italic uppercase">Identificación de Tropas</p>
-                    </div>
-                    <div id="listaCercania" class="bg-black/30 p-4 rounded-xl border border-slate-900 min-h-[150px]">
-                        <p class="text-slate-700 text-[10px] text-center mt-10 italic uppercase">Pueblos de Apoyo</p>
-                    </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div id="resCalc" class="bg-black/60 p-3 rounded-xl border border-slate-900 min-h-[100px]"></div>
+                    <div id="listaCercania" class="bg-black/60 p-3 rounded-xl border border-slate-900 min-h-[100px]"></div>
                 </div>
             </section>
         </div>
